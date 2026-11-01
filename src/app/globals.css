@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f7f9;
+  --surface: #ffffff;
+  --border: #e4e7ec;
+  --foreground: #101828;
+  --muted: #667085;
+  --brand: #4f46e5;
+  --income: #059669;
+  --expense: #e11d48;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b0d12;
+    --surface: #14171f;
+    --border: #262b36;
+    --foreground: #eef0f4;
+    --muted: #98a2b3;
+    --brand: #818cf8;
+    --income: #34d399;
+    --expense: #fb7185;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-income: var(--income);
+  --color-expense: var(--expense);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-border bg-surface p-4 shadow-sm;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/10;
+  }
+  .btn-primary {
+    @apply border-transparent bg-brand text-white hover:opacity-90 hover:bg-brand dark:text-black dark:hover:bg-brand;
+  }
+  .btn-danger {
+    @apply border-transparent bg-expense text-white hover:bg-expense hover:opacity-90 dark:text-black;
+  }
+  .input {
+    @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-muted;
+  }
+}
