@@ -64,7 +64,7 @@ export interface DailyTotal {
   count: number;
 }
 
-export type Period = "daily" | "weekly" | "monthly";
+export type Period = "daily" | "weekly" | "monthly" | "yearly" | "custom";
 
 export interface Dashboard {
   period: Period;

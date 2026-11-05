@@ -6,7 +6,7 @@ Web dashboard for the Telegram AI Expense Tracker (`../expenses`), built with **
 
 - **Telegram One-Time Login (`/weblogin`)**: Send `/weblogin` to the Telegram bot in a private chat to receive a short-lived, single-use login code (`ABCD-EFGH`).
 - **Personal & Shared Group Ledgers**: Switch seamlessly between your personal Telegram ledger and any whitelisted Telegram group ledger you belong to.
-- **Dashboard (`/`)**: Daily, weekly, and monthly summaries, period navigation, daily income/expense bar chart, and top category breakdown.
+- **Dashboard (`/`)**: Daily, weekly, monthly, yearly (`Tahunan`), and custom date-range (`Kustom`) summaries, direct date/month/year selectors, period navigation, daily/monthly income & expense bar chart, and top category breakdown.
 - **Transactions (`/transactions`)**: Paginated list with search, type, category, wallet, and date-range filters; create, edit, and delete transactions; expand receipt line items.
 - **Wallets (`/wallets`)**: View balances per wallet, create wallets, switch the main wallet, and delete non-main wallets.
 - **Backend-for-Frontend (BFF) Security**:

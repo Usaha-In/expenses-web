@@ -4,7 +4,15 @@ import Link from "next/link";
 import { useState } from "react";
 import { CategoryBars, DailyBars } from "@/components/charts";
 import { useSession } from "@/components/session";
-import { formatDateTime, formatMoney, shiftDate, toDateInput } from "@/lib/format";
+import {
+  MONTH_NAMES,
+  daysBetween,
+  formatDateTime,
+  formatMoney,
+  shiftDate,
+  startOfWeek,
+  toDateInput,
+} from "@/lib/format";
 import type { Dashboard, Period } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 
@@ -12,41 +20,105 @@ const PERIODS: Array<{ id: Period; label: string }> = [
   { id: "daily", label: "Harian" },
   { id: "weekly", label: "Mingguan" },
   { id: "monthly", label: "Bulanan" },
+  { id: "yearly", label: "Tahunan" },
+  { id: "custom", label: "Kustom" },
 ];
 
 export default function DashboardPage() {
   const { account } = useSession();
+  const todayStr = toDateInput(new Date());
+  const currentYear = Number(todayStr.slice(0, 4));
+  const defaultMonthStart = `${todayStr.slice(0, 7)}-01`;
+
   const [period, setPeriod] = useState<Period>("monthly");
   const [date, setDate] = useState<string>(""); // empty = current period (server decides)
+  const [customStart, setCustomStart] = useState<string>(defaultMonthStart);
+  const [customEnd, setCustomEnd] = useState<string>(todayStr);
 
-  const { data, error, loading } = useApi<Dashboard>(`accounts/${account.id}/dashboard`, {
-    period,
-    date,
-  });
+  const query =
+    period === "custom"
+      ? { period, startDate: customStart, endDate: customEnd }
+      : { period, date };
 
-  function step(delta: number) {
-    if (!data || period === "weekly") return;
-    const unit = period === "monthly" ? "month" : "day";
-    setDate(shiftDate(data.startDate, unit, delta));
+  const { data, error, loading } = useApi<Dashboard>(`accounts/${account.id}/dashboard`, query);
+
+  function selectPeriod(next: Period) {
+    if (next === "custom" && period !== "custom" && data) {
+      setCustomStart(data.startDate);
+      setCustomEnd(data.endDate);
+    }
+    setPeriod(next);
+    setDate("");
   }
 
-  const todayStr = toDateInput(new Date());
+  function applyDate(next: string) {
+    if (!next) {
+      setDate("");
+      return;
+    }
+    if (period === "daily" && next === todayStr) setDate("");
+    else if (period === "weekly") {
+      const ws = startOfWeek(next);
+      const we = shiftDate(ws, "day", 6);
+      setDate(todayStr >= ws && todayStr <= we ? "" : next);
+    } else if (period === "monthly" && next.slice(0, 7) === todayStr.slice(0, 7)) setDate("");
+    else if (period === "yearly" && next.slice(0, 4) === todayStr.slice(0, 4)) setDate("");
+    else setDate(next);
+  }
+
+  function step(delta: number) {
+    if (period === "custom") return;
+    const baseDate =
+      date.length === 4
+        ? `${date}-01-01`
+        : date.length === 7
+          ? `${date}-01`
+          : date.length === 10
+            ? date
+            : data?.startDate ?? todayStr;
+    if (period === "weekly") {
+      const next = shiftDate(startOfWeek(baseDate), "day", delta * 7);
+      applyDate(next);
+      return;
+    }
+    const unit = period === "yearly" ? "year" : period === "monthly" ? "month" : "day";
+    const next = shiftDate(baseDate, unit, delta);
+    applyDate(next);
+  }
+
+  const refDate = date || (data?.period === period ? data.startDate : "") || todayStr;
+  const selYearStr = refDate.slice(0, 4);
+  const selMonthStr = refDate.length >= 7 ? refDate.slice(5, 7) : todayStr.slice(5, 7);
+  const selYearNum = Number(selYearStr) || currentYear;
+  const minYear = Math.min(currentYear - 10, selYearNum - 2);
+  const maxYear = Math.max(currentYear + 1, selYearNum + 1);
+  const yearOptions: number[] = [];
+  for (let y = maxYear; y >= minYear; y--) yearOptions.push(y);
+
+  const currentWeekStart = startOfWeek(todayStr);
   const atCurrent =
-    data !== null && (period === "daily" ? data.startDate >= todayStr : data.endDate >= todayStr);
+    period === "daily"
+      ? refDate.slice(0, 10) >= todayStr
+      : period === "weekly"
+        ? startOfWeek(refDate.length === 10 ? refDate : todayStr) >= currentWeekStart
+        : period === "monthly"
+          ? `${selYearStr}-${selMonthStr}` >= todayStr.slice(0, 7)
+          : period === "yearly"
+            ? selYearStr >= todayStr.slice(0, 4)
+            : true;
+
+  const isMonthlyChart = data ? daysBetween(data.startDate, data.endDate) > 62 : false;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg border border-border bg-surface p-0.5" role="tablist">
+        <div className="flex flex-wrap rounded-lg border border-border bg-surface p-0.5" role="tablist">
           {PERIODS.map((p) => (
             <button
               key={p.id}
               role="tab"
               aria-selected={period === p.id}
-              onClick={() => {
-                setPeriod(p.id);
-                setDate("");
-              }}
+              onClick={() => selectPeriod(p.id)}
               className={`rounded-md px-3 py-1.5 text-sm font-medium ${
                 period === p.id ? "bg-brand text-white dark:text-black" : "text-muted"
               }`}
@@ -55,19 +127,123 @@ export default function DashboardPage() {
             </button>
           ))}
         </div>
-        {period !== "weekly" && (
-          <div className="flex items-center gap-1">
-            <button className="btn" onClick={() => step(-1)} aria-label="Sebelumnya" disabled={!data}>
+
+        {period === "custom" ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <label htmlFor="custom-start" className="text-xs font-medium text-muted">
+              Dari
+            </label>
+            <input
+              id="custom-start"
+              type="date"
+              className="input !w-auto !py-1.5"
+              value={customStart}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                setCustomStart(v);
+                if (v > customEnd) setCustomEnd(v);
+              }}
+            />
+            <label htmlFor="custom-end" className="text-xs font-medium text-muted">
+              Sampai
+            </label>
+            <input
+              id="custom-end"
+              type="date"
+              className="input !w-auto !py-1.5"
+              value={customEnd}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                setCustomEnd(v);
+                if (v < customStart) setCustomStart(v);
+              }}
+            />
+            <button
+              type="button"
+              className="btn !py-1.5"
+              onClick={() => {
+                setCustomStart(defaultMonthStart);
+                setCustomEnd(todayStr);
+              }}
+              disabled={customStart === defaultMonthStart && customEnd === todayStr}
+            >
+              Bulan ini
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1">
+            <button className="btn !py-1.5" onClick={() => step(-1)} aria-label="Sebelumnya" disabled={!data}>
               ←
             </button>
-            <button className="btn" onClick={() => step(1)} aria-label="Berikutnya" disabled={!data || atCurrent}>
+
+            {(period === "daily" || period === "weekly") && (
+              <input
+                type="date"
+                aria-label="Pilih tanggal"
+                className="input !w-auto !py-1.5"
+                value={refDate.length === 10 ? refDate : todayStr}
+                onChange={(e) => applyDate(e.target.value)}
+              />
+            )}
+
+            {period === "monthly" && (
+              <>
+                <select
+                  aria-label="Pilih bulan"
+                  className="input !w-auto !py-1.5"
+                  value={selMonthStr}
+                  onChange={(e) => applyDate(`${selYearStr}-${e.target.value}`)}
+                >
+                  {MONTH_NAMES.map((name, idx) => {
+                    const m = String(idx + 1).padStart(2, "0");
+                    return (
+                      <option key={m} value={m}>
+                        {name}
+                      </option>
+                    );
+                  })}
+                </select>
+                <select
+                  aria-label="Pilih tahun"
+                  className="input !w-auto !py-1.5"
+                  value={selYearStr}
+                  onChange={(e) => applyDate(`${e.target.value}-${selMonthStr}`)}
+                >
+                  {yearOptions.map((y) => (
+                    <option key={y} value={String(y)}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+
+            {period === "yearly" && (
+              <select
+                aria-label="Pilih tahun"
+                className="input !w-auto !py-1.5"
+                value={selYearStr}
+                onChange={(e) => applyDate(e.target.value)}
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={String(y)}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <button className="btn !py-1.5" onClick={() => step(1)} aria-label="Berikutnya" disabled={!data || atCurrent}>
               →
             </button>
-            <button className="btn" onClick={() => setDate("")} disabled={date === ""}>
+            <button className="btn !py-1.5" onClick={() => setDate("")} disabled={date === ""}>
               Sekarang
             </button>
           </div>
         )}
+
         <h1 className="ml-auto text-sm font-medium text-muted">{data?.periodLabel ?? "…"}</h1>
       </div>
 
@@ -86,7 +262,9 @@ export default function DashboardPage() {
       {data && (
         <div className={`grid gap-4 lg:grid-cols-5 ${loading ? "opacity-60" : ""}`}>
           <section className="card lg:col-span-3">
-            <h2 className="mb-3 text-sm font-semibold">Arus kas harian</h2>
+            <h2 className="mb-3 text-sm font-semibold">
+              {isMonthlyChart ? "Arus kas bulanan" : "Arus kas harian"}
+            </h2>
             <DailyBars daily={data.daily} start={data.startDate} end={data.endDate} currency={data.currency} />
             <p className="mt-2 flex gap-4 text-xs text-muted">
               <span>

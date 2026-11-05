@@ -1,10 +1,17 @@
-import { formatCompact, formatMoney } from "@/lib/format";
+import {
+  MONTH_NAMES,
+  SHORT_MONTH_NAMES,
+  daysBetween,
+  eachDay,
+  eachMonth,
+  formatCompact,
+  formatMoney,
+} from "@/lib/format";
 import type { CategorySummary, DailyTotal } from "@/lib/types";
-import { eachDay } from "@/lib/format";
 
 const PALETTE = ["#6366f1", "#f43f5e", "#10b981", "#f59e0b", "#06b6d4", "#a855f7", "#84cc16", "#ec4899"];
 
-/** Grouped daily income/expense bars rendered with SVG attributes (no inline styles). */
+/** Grouped daily or monthly income/expense bars rendered with SVG attributes (no inline styles). */
 export function DailyBars({
   daily,
   start,
@@ -16,13 +23,46 @@ export function DailyBars({
   end: string;
   currency: string;
 }) {
-  const days = eachDay(start, end);
-  const byDate = new Map(daily.map((d) => [d.date, d]));
-  const rows = days.map((date) => ({
-    date,
-    income: byDate.get(date)?.totalIncome ?? 0,
-    expense: byDate.get(date)?.totalExpense ?? 0,
-  }));
+  const monthly = daysBetween(start, end) > 62;
+  const rows: Array<{ key: string; label: string; title: string; income: number; expense: number }> = [];
+
+  if (monthly) {
+    const months = eachMonth(start, end);
+    const sameYear = start.slice(0, 4) === end.slice(0, 4);
+    const byMonth = new Map<string, { income: number; expense: number }>();
+    for (const d of daily) {
+      const ym = d.date.slice(0, 7);
+      const cur = byMonth.get(ym) ?? { income: 0, expense: 0 };
+      cur.income += d.totalIncome;
+      cur.expense += d.totalExpense;
+      byMonth.set(ym, cur);
+    }
+    for (const ym of months) {
+      const mIdx = Math.max(0, Math.min(11, Number(ym.slice(5, 7)) - 1));
+      const agg = byMonth.get(ym);
+      rows.push({
+        key: ym,
+        label: sameYear ? SHORT_MONTH_NAMES[mIdx] : `${SHORT_MONTH_NAMES[mIdx]} '${ym.slice(2, 4)}`,
+        title: `${MONTH_NAMES[mIdx]} ${ym.slice(0, 4)}`,
+        income: agg?.income ?? 0,
+        expense: agg?.expense ?? 0,
+      });
+    }
+  } else {
+    const days = eachDay(start, end);
+    const crossMonth = start.slice(0, 7) !== end.slice(0, 7);
+    const byDate = new Map(daily.map((d) => [d.date, d]));
+    for (const date of days) {
+      rows.push({
+        key: date,
+        label: crossMonth ? `${date.slice(8)}/${date.slice(5, 7)}` : date.slice(8),
+        title: date,
+        income: byDate.get(date)?.totalIncome ?? 0,
+        expense: byDate.get(date)?.totalExpense ?? 0,
+      });
+    }
+  }
+
   const max = Math.max(1, ...rows.flatMap((r) => [r.income, r.expense]));
 
   const W = 720;
@@ -32,13 +72,14 @@ export function DailyBars({
   const slot = (W - padX * 2) / Math.max(rows.length, 1);
   const barW = Math.max(2, Math.min(14, slot / 2 - 1));
   const chartH = H - padBottom - 8;
-  const labelEvery = Math.ceil(rows.length / 10);
+  const maxLabels = monthly && start.slice(0, 4) === end.slice(0, 4) ? 12 : start.slice(0, 7) !== end.slice(0, 7) ? 8 : 10;
+  const labelEvery = Math.max(1, Math.ceil(rows.length / maxLabels));
 
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       role="img"
-      aria-label="Grafik pemasukan dan pengeluaran harian"
+      aria-label={monthly ? "Grafik pemasukan dan pengeluaran bulanan" : "Grafik pemasukan dan pengeluaran harian"}
       className="h-auto w-full"
     >
       <line x1={0} x2={W} y1={H - padBottom} y2={H - padBottom} stroke="currentColor" opacity={0.15} />
@@ -50,13 +91,13 @@ export function DailyBars({
         const he = (r.expense / max) * chartH;
         const hi = (r.income / max) * chartH;
         return (
-          <g key={r.date}>
-            <title>{`${r.date}\nPemasukan: ${formatMoney(r.income, currency)}\nPengeluaran: ${formatMoney(r.expense, currency)}`}</title>
+          <g key={r.key}>
+            <title>{`${r.title}\nPemasukan: ${formatMoney(r.income, currency)}\nPengeluaran: ${formatMoney(r.expense, currency)}`}</title>
             <rect x={cx - barW} y={H - padBottom - hi} width={barW} height={hi} rx={2} fill="var(--income)" />
             <rect x={cx} y={H - padBottom - he} width={barW} height={he} rx={2} fill="var(--expense)" />
             {i % labelEvery === 0 && (
               <text x={cx} y={H - 6} fontSize={10} textAnchor="middle" fill="currentColor" opacity={0.6}>
-                {r.date.slice(8)}
+                {r.label}
               </text>
             )}
           </g>
