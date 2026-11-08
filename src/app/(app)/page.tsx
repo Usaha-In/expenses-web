@@ -282,9 +282,18 @@ export default function DashboardPage() {
           <section className="card lg:col-span-5">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Transaksi terakhir</h2>
-              <Link href="/transactions" className="text-sm text-brand hover:underline">
-                Lihat semua →
-              </Link>
+              <div className="flex items-center gap-3">
+                <a
+                  href={`/api/accounts/${account.id}/expenses/export`}
+                  download
+                  className="text-sm text-brand hover:underline"
+                >
+                  ↓ Export CSV
+                </a>
+                <Link href="/transactions" className="text-sm text-brand hover:underline">
+                  Lihat semua →
+                </Link>
+              </div>
             </div>
             {data.recent.length === 0 ? (
               <p className="text-sm text-muted">Belum ada transaksi.</p>

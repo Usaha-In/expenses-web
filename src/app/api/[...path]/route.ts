@@ -19,12 +19,14 @@ const ALLOWED_PATHS: Array<{ methods: string[]; pattern: RegExp }> = [
   { methods: ["GET"], pattern: /^auth\/me$/ },
   {
     methods: ["GET"],
-    pattern: /^accounts\/-?\d{1,16}\/(dashboard|summary|categories|wallets|expenses)$/,
+    pattern: /^accounts\/-?\d{1,16}\/(dashboard|summary|categories|wallets|expenses|expenses\/export)$/,
   },
   { methods: ["POST"], pattern: /^accounts\/-?\d{1,16}\/(expenses|wallets|wallets\/main)$/ },
   { methods: ["PATCH", "DELETE"], pattern: /^accounts\/-?\d{1,16}\/expenses\/\d{1,16}$/ },
   { methods: ["DELETE"], pattern: /^accounts\/-?\d{1,16}\/wallets$/ },
 ];
+
+const SAFE_DISPOSITION = /^attachment; filename="[A-Za-z0-9._-]{1,100}"$/;
 
 const MAX_BODY_BYTES = 100_000;
 
@@ -64,6 +66,20 @@ async function handle(request: Request, ctx: RouteContext<"/api/[...path]">) {
   }
 
   const text = await res.text();
+  const backendContentType = res.headers.get("content-type") ?? "";
+  if (res.ok && backendContentType.toLowerCase().startsWith("text/csv")) {
+    const headers: Record<string, string> = {
+      "Content-Type": "text/csv; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "no-store",
+    };
+    const disposition = res.headers.get("content-disposition");
+    if (disposition && SAFE_DISPOSITION.test(disposition)) {
+      headers["Content-Disposition"] = disposition;
+    }
+    return new Response(text, { status: res.status, headers });
+  }
+
   return new Response(text, {
     status: res.status,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },

@@ -62,3 +62,58 @@ export async function api<T>(
   }
   return data as T;
 }
+
+export async function downloadCsv(
+  path: string,
+  query?: Query,
+  fallbackFilename = "transaksi.csv",
+): Promise<void> {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(query ?? {})) {
+    if (v !== undefined && v !== null && v !== "") params.set(k, String(v));
+  }
+  const qs = params.toString();
+
+  let res: Response;
+  try {
+    res = await fetch(`/api/${path}${qs ? `?${qs}` : ""}`, {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError(0, "Tidak dapat terhubung ke server.");
+  }
+
+  if (!res.ok) {
+    let data: unknown = null;
+    try {
+      data = await res.json();
+    } catch {
+      // non-JSON body
+    }
+    const msg =
+      typeof data === "object" && data !== null && typeof (data as { message?: unknown }).message === "string"
+        ? (data as { message: string }).message
+        : "Gagal mengekspor data CSV.";
+    if (res.status === 401) {
+      window.dispatchEvent(new Event("expen:session-expired"));
+    }
+    throw new ApiError(res.status, msg);
+  }
+
+  const csvText = await res.text();
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = /filename="([A-Za-z0-9._-]{1,100})"/.exec(disposition);
+  const filename = match ? match[1] : fallbackFilename;
+
+  const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ConfirmModal, ExpenseFormModal } from "@/components/expense-form";
 import { useSession } from "@/components/session";
-import { api } from "@/lib/api";
+import { api, downloadCsv } from "@/lib/api";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import type { CategoryUsage, Expense, ExpenseList, Wallet } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
@@ -29,6 +29,8 @@ export default function TransactionsPage() {
   const [editing, setEditing] = useState<Expense | "new" | null>(null);
   const [deleting, setDeleting] = useState<Expense | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const list = useApi<ExpenseList>(`${base}/expenses`, {
     ...filters,
@@ -45,15 +47,44 @@ export default function TransactionsPage() {
     setFilters(draft);
   }
 
+  async function handleExportCsv() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await downloadCsv(
+        `${base}/expenses/export`,
+        {
+          ...filters,
+          type: filters.type === "all" ? undefined : filters.type,
+        },
+        `transaksi-${account.id}-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Gagal mengekspor data CSV.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const rows = list.data?.data ?? [];
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Transaksi</h1>
-        <button className="btn btn-primary" onClick={() => setEditing("new")}>
-          + Tambah
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="btn"
+            disabled={exporting}
+            onClick={handleExportCsv}
+          >
+            {exporting ? "Mengekspor…" : "↓ Export CSV"}
+          </button>
+          <button className="btn btn-primary" onClick={() => setEditing("new")}>
+            + Tambah
+          </button>
+        </div>
       </div>
 
       <form onSubmit={apply} className="card grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
@@ -113,8 +144,8 @@ export default function TransactionsPage() {
         </div>
       </form>
 
-      {list.error && (
-        <p role="alert" className="card text-sm text-expense">{list.error}</p>
+      {(list.error || exportError) && (
+        <p role="alert" className="card text-sm text-expense">{list.error || exportError}</p>
       )}
 
       <div className={`card overflow-x-auto !p-0 ${list.loading ? "opacity-60" : ""}`}>
